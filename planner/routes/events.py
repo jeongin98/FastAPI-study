@@ -4,6 +4,7 @@ from models.events import Event, EventUpdate # models.events 파일에 있는 Ev
 from typing import List
 from database.connection import get_session
 from sqlmodel import select
+from auth.authenticate import authenticate
 
 
 event_router = APIRouter(
@@ -32,10 +33,12 @@ async def retrieve_event(id: int, session=Depends(get_session)) -> Event:
 
 # 이벤트 생성
 @event_router.post("/new")
-async def create_event(new_event: Event,session=Depends(get_session)) -> dict:
-    session.add(new_event)
+async def create_event(body: Event,session=Depends(get_session), user: str = Depends(authenticate)) -> dict:
+    body.creator = user
+    
+    session.add(body)
     session.commit()
-    session.refresh(new_event)
+    session.refresh(body)
 
     return {
         "message": "Event created successfully"
@@ -43,9 +46,14 @@ async def create_event(new_event: Event,session=Depends(get_session)) -> dict:
 
 # 이벤트 삭제
 @event_router.delete("/delete/{id}")
-async def delete_event(id: int, session=Depends(get_session)) -> dict:
+async def delete_event(id: int, session=Depends(get_session), user: str = Depends(authenticate)) -> dict:
     event = session.get(Event, id)
     if event:
+        if event.creator != user:
+            raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Operation not allowed"
+                )
         session.delete(event)
         session.commit()
         return {
